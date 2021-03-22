@@ -124,19 +124,17 @@ for (client in 1:370){
         
         
         #######################DECOMPOSITION and FORECASTING####################
+        ######ROLLING WINDOW FOpRECAST __ 1day forecast over 7 days
+        decomp <- stl(tshourly_short, s.window = "periodic")
+        #plot(decomp)
+        seas.adjusted <- seasadj(decomp)
+        #plot(seas.adjusted)
+        #fc_decomp <- forecast(seas.adjusted, h = test1d.size)
         
-        pd_s <- stlf(tshourly_short, method = "arima" , h = test1d.size)
-        #seasonal component
-        #seas_short <- snaive(y = tshourly_short[rowNum_short:shortTrain], h = test1d.size)
-        
-        #seasonal adjusted component
-        #ts.train <- ts(hourly[(train.size - shortTrain +rowNum_short):train.size,client], frequency = 7)
-        #seasadj_short <- stlf(ts.train, method = 'arima',  h = test1d.size)
-      
-        
-        ######ROLLING WINDOW FORECAST __ 1day forecast over 7 days
-        #####################assume additive decomposition
-  
+        #fitting ARIMA model
+        ARIMAfit <- auto.arima(seas.adjusted, seasonal = FALSE)
+        pd_s <- forecast(ARIMAfit, h = test1d.size)
+        #autoplot(pd_s)
         #quantile forecast results for 50 percentile
         pd50 <- pd_s$mean
         #quantile forecast results for 90 percentile = upper 80%
@@ -149,8 +147,10 @@ for (client in 1:370){
           
           new.train<- c(half1, half2)
           ts.train <- ts(new.train, frequency = 7)
-          
-          pd_s <- stlf(ts.train, method = "arima" , h = test1d.size)
+          decomp <- stl(ts.train, s.window = "periodic")
+          seas.adjusted <- seasadj(decomp)
+          ARIMAfit <- auto.arima(seas.adjusted, seasonal = FALSE)
+          pd_s <- forecast(ARIMAfit, h = test1d.size)
           
           
           ######ROLLING WINDOW FORECAST __ 1day forecast over 7 days
@@ -169,17 +169,20 @@ for (client in 1:370){
           
         }
       
-        results[counts,1] <- normalizeQuant(actual1d,pd50,0.5)
-        results[counts,2] <- normalizeQuant(actual1d,pd90,0.9)
+        results[counts,1] <- abs(normalizeQuant(actual1d,pd50,0.5))
+        results[counts,2] <- abs(normalizeQuant(actual1d,pd90,0.9))
         
         
         
         #########ROLLING WINDOW FORECAST __ 7days forecast
         
         #get seasonal component forecast
-        pd_l <- stlf(tshourly_long, method = "arima" , h = test7d.size)
+        decomp_l <- stl(tshourly_long, s.window = "periodic")
+        seas.adjusted <- seasadj(decomp_l)
+     
+        ARIMAfit <- auto.arima(seas.adjusted, seasonal = FALSE)
+        pd_l <- forecast(ARIMAfit, h = test7d.size)
         
-  
         
         #quantile forecast results for 50 percentile
         pd50_l <- pd_l$mean
@@ -192,39 +195,44 @@ for (client in 1:370){
         ########################## Forecast with ETS ########################
         
         
-        pdETS_s <- stlf(tshourly_short, method = "ets" , h = test1d.size)
+        decomp <- stl(tshourly_short, s.window = "periodic")
+        #plot(decomp)
+        seas.adjusted <- seasadj(decomp)
         
+        #fitting ARIMA model
+        ETSfit <- ets(seas.adjusted)
+        pdETS_s <- forecast(ETSfit, h = test1d.size)
+       
         #quantile forecast results for 50 percentile
         pdETS50 <- pdETS_s$mean
         #quantile forecast results for 90 percentile = upper 80%
         pdETS90 <- pdETS_s$upper[,1]
         
-        
         t.start = rowNum_short+24
-        half1 <- tshourly_short[t.start:shortTrain]
+        half1 <- tshourly_short[t.start:shortTrain] #omit the first 24 datas in training set
         half2 <-  pdETS50
-      
-        
-        ######ROLLING WINDOW FORECAST __ 1day forecast over 7 days
-        #####################assume additive decomposition  
         while (t.start < 169 ) {
-        
+          #print(t.start)
           new.train<- c(half1, half2)
           ts.train <- ts(new.train, frequency = 7)
+          decomp <- stl(ts.train, s.window = "periodic")
+          seas.adjusted <- seasadj(decomp)
+          ETSfit <- ets(seas.adjusted)
+          pdETS_s <- forecast(ETSfit, h = test1d.size)
           
-          pdETS_s <- stlf(ts.train, method = "ets" , h = test1d.size)
+          ######ROLLING WINDOW FORECAST __ 1day forecast over 7 days
+          #####################assume additive decomposition
           
-        
           #quantile forecast results for 50 percentile
           pdETS50 <- pdETS_s$mean
           #quantile forecast results for 90 percentile = upper 80%
           pdETS90 <- pdETS_s$upper[,1]
           
-          t.start <- t.start + 24
-          
           len.half2 <- length(half2)
+          
           half1 <-half1[25:(168-len.half2)]
-          half2 <- c(half2,pd50)
+          t.start <- t.start + 24
+          half2 <- c(half2,pdETS50)
         }
         
         
@@ -233,13 +241,19 @@ for (client in 1:370){
         results[counts,6] <- abs(normalizeQuant(actual1d,pdETS90,0.9))
         
         ############7 days forecast
-        pdETS_l <- stlf(tshourly_long, method = "ets" , h = test7d.size)
         
+        decomp_l <- stl(tshourly_long, s.window = "periodic")
+        seas.adjusted <- seasadj(decomp_l)
+        
+        ETSfit <- ets(seas.adjusted)
+        pdETS_l  <- forecast(ETSfit, h = test7d.size)
+
         #quantile forecast results for 50 percentile
         pdETS50_l <- pdETS_l$mean
         #quantile forecast results for 90 percentile = upper 80%
         pdETS90_l <- pdETS_l$upper[,1]
         
+      
         results[counts,7] <- abs(normalizeQuant(actual7d,pdETS50_l,0.5))
         results[counts,8] <- abs(normalizeQuant(actual7d,pdETS90_l,0.9))
       
@@ -250,6 +264,7 @@ for (client in 1:370){
     
   }
 }
+
 
 
 comparison <- data.frame("ARIMA-1day-0.5" = c(mean(results[1:counts,1]),0.154),
